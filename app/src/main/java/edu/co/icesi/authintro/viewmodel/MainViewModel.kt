@@ -6,19 +6,24 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.ktx.auth
+import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+import edu.co.icesi.authintro.model.User
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.lang.Exception
 
 class MainViewModel : ViewModel(){
 
-    private val _authState = MutableLiveData(0)
-    val authState : LiveData<Int> get() = _authState
+    private val _authState = MutableLiveData(
+        AuthState(AuthResult.IDLE, "Starting...")
+    )
+    val authState : LiveData<AuthState> get() = _authState
 
     //Accion de registro
-    fun signUp(email:String, pass:String){
+    fun signUp(name:String, phone:String, email:String, pass:String){
         viewModelScope.launch (Dispatchers.IO){
             try {
                 val result = Firebase.auth.createUserWithEmailAndPassword(
@@ -26,13 +31,22 @@ class MainViewModel : ViewModel(){
                     pass)
                     .await()
                 Log.e(">>>", Firebase.auth.currentUser!!.uid)
-                _authState.value = 1
+                //Registrar el objeto en Firestore
+                val user = User(Firebase.auth.currentUser!!.uid, name, phone, email)
+                Firebase.firestore.collection("users")
+                    .document(user.id).set(user).await()
+
+
+
+                withContext(Dispatchers.Main){ _authState.value = AuthState(AuthResult.SUCCESS, "Success") }
+
             }catch (ex:Exception){
                 Log.e(">>>", ex.localizedMessage)
-                _authState.value = -1
+                withContext(Dispatchers.Main){ _authState.value = AuthState(AuthResult.FAIL, ex.localizedMessage)}
             }
+
         }
-
     }
-
 }
+data class AuthState(val result:AuthResult, val message:String)
+enum class AuthResult{ IDLE, FAIL, SUCCESS }
